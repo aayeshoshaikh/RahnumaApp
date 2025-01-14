@@ -11,6 +11,7 @@ cd Rahnuma
 npm install expo-location
 npm start
 
+
 npm install react-native-maps
 npm install expo-location
 
