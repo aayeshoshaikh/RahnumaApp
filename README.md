@@ -4,6 +4,17 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
 
 ## Get started
 
+Create project:
+npm install -g expo-cli
+npx create-expo-app Rahnuma
+cd Rahnuma
+npm install expo-location
+npm start
+
+npm install react-native-maps
+npm install expo-location
+
+
 1. Install dependencies
 
    ```bash
