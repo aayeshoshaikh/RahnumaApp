@@ -70,15 +70,15 @@ export default function HomeScreen() {
 
   useEffect(() => {
     console.log('Initial load: fetching location');
-    getCurrentLocation();
+    getCurrentLocation(); // Fetch location and masjids on initial load
   }, []);
 
   useEffect(() => {
     if (region) {
       console.log('Region updated, refetching masjids...');
-      fetchLocations(region.latitude, region.longitude, radius);
+      fetchLocations(region.latitude, region.longitude, radius); // Fetch masjids whenever region or radius changes
     }
-  }, [radius]);
+  }, [radius, region]);
 
   const handleShowMasjidsToggle = () => {
     setShowMasjids((prev) => !prev);
@@ -140,10 +140,11 @@ export default function HomeScreen() {
           ))}
       </MapView>
 
+      {/* Header Section */}
       <View style={styles.header}>
         <Button title="Locate me" onPress={getCurrentLocation} />
-        <View style={styles.checkboxContainer}>
-          <Text>Show Masjids</Text>
+        <View style={styles.toggleContainer}>
+          <Text style={styles.toggleText}>Show Masjids</Text>
           <Switch
             value={showMasjids}
             onValueChange={handleShowMasjidsToggle}
@@ -168,15 +169,23 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 40,
     left: 10,
+    right: 10,
     zIndex: 10,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 10,
+    padding: 5,
   },
-  checkboxContainer: {
+  toggleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 10,
+  },
+  toggleText: {
+    fontSize: 16,
+    marginRight: 10,
   },
   loader: {
     flex: 1,
