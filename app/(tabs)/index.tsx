@@ -4,16 +4,20 @@ import * as Location from 'expo-location';
 import MapView, { Marker, Circle } from 'react-native-maps';
 
 const masjidIcon = require('./../../assets/small-masjid-icon.png'); // Ensure the icon path is correct
+const restaurantIcon = require('./../../assets/halal-restaurant-icon.png'); // Ensure you have a restaurant icon
 
 export default function HomeScreen() {
   const [region, setRegion] = useState<any>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [masjids, setMasjids] = useState<any[]>([]);
+  const [restaurants, setRestaurants] = useState<any[]>([]);
   const [radius, setRadius] = useState<number>(10);
-  const [showMasjids, setShowMasjids] = useState<boolean>(true);
+  const [showMasjids, setShowMasjids] = useState<boolean>(true); // Default to true
+  const [showRestaurants, setShowRestaurants] = useState<boolean>(true); // Default to true
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const fetchLocations = async (latitude: number, longitude: number, radiusInMiles: number) => {
+  // Fetch Masjids
+  const fetchMasjids = async (latitude: number, longitude: number, radiusInMiles: number) => {
     try {
       console.log(`Fetching masjids: lat=${latitude}, long=${longitude}, radius=${radiusInMiles}`);
       const response = await fetch(
@@ -28,15 +32,29 @@ export default function HomeScreen() {
       console.log('Fetched masjids:', data);
       setMasjids(data || []);
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'An unknown error occurred';
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
       Alert.alert('Error', errorMessage);
-      console.error(errorMessage);
-    } finally {
-      setIsLoading(false);
     }
   };
 
+  // Fetch Restaurants
+  const fetchRestaurants = async (latitude: number, longitude: number, radiusInMiles: number) => {
+    try {
+      const response = await fetch(
+        `http://192.168.12.206:8080/api/fetchHalalRestaurants?latitude=${latitude}&longitude=${longitude}&radiusInMiles=${radiusInMiles}`
+      );
+      if (!response.ok) {
+        throw new Error(`Error fetching restaurants: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setRestaurants(data || []);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      Alert.alert('Error', errorMessage);
+    }
+  };
+
+  // Get User's Current Location
   const getCurrentLocation = async () => {
     try {
       setIsLoading(true);
@@ -59,7 +77,8 @@ export default function HomeScreen() {
 
       console.log('Setting region:', updatedRegion);
       setRegion(updatedRegion);
-      await fetchLocations(latitude, longitude, radius); // Fetch masjids after setting region
+      await fetchMasjids(latitude, longitude, radius); // Fetch masjids after setting region
+      await fetchRestaurants(latitude, longitude, radius); // Fetch restaurants after setting region
     } catch (error) {
       console.error('Error getting location:', error);
       setErrorMsg('Failed to fetch location. Please try again.');
@@ -68,27 +87,41 @@ export default function HomeScreen() {
     }
   };
 
-  useEffect(() => {
-    console.log('Initial load: fetching location');
-    getCurrentLocation(); // Fetch location and masjids on initial load
-  }, []);
-
+  // Update Data Based on Radius or Region Changes
   useEffect(() => {
     if (region) {
-      console.log('Region updated, refetching masjids...');
-      fetchLocations(region.latitude, region.longitude, radius); // Fetch masjids whenever region or radius changes
+      fetchMasjids(region.latitude, region.longitude, radius);
+      fetchRestaurants(region.latitude, region.longitude, radius);
     }
-  }, [radius, region]);
+  }, [region, radius]);
 
   const handleShowMasjidsToggle = () => {
-    setShowMasjids((prev) => !prev);
+    setShowMasjids((prev) => {
+        const newValue = !prev;
+        if (newValue) {
+            // Re-fetch masjids if toggled back on
+            fetchMasjids(region.latitude, region.longitude, radius);
+        }
+        return newValue;
+    });
+};
 
-    if (!showMasjids) {
-      // Re-center the map and fetch masjids when re-enabling
-      console.log('Re-enabling masjid markers');
-      getCurrentLocation();
-    }
-  };
+const handleShowRestaurantsToggle = () => {
+    setShowRestaurants((prev) => {
+        const newValue = !prev;
+        if (newValue) {
+            // Re-fetch restaurants if toggled back on
+            fetchRestaurants(region.latitude, region.longitude, radius);
+        }
+        return newValue;
+    });
+};
+
+
+  // Initial Load
+  useEffect(() => {
+    getCurrentLocation();
+  }, []);
 
   if (isLoading) {
     return (
@@ -106,39 +139,62 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <MapView
-        style={styles.map}
-        region={region}
-        showsUserLocation={true}
-        showsMyLocationButton={true}
-        zoomControlEnabled={true}
-      >
-        <Circle
-          center={region}
-          radius={radius * 1609.34} // Convert miles to meters
-          strokeColor="blue"
-          fillColor="rgba(0, 0, 255, 0.1)"
-        />
+  style={styles.map}
+  region={region}
+  showsUserLocation={true}
+  showsMyLocationButton={true}
+  zoomControlEnabled={true}
+>
+  <Circle
+    center={region}
+    radius={radius * 1609.34} // Convert miles to meters
+    strokeColor="blue"
+    fillColor="rgba(0, 0, 255, 0.1)"
+  />
 
-        {showMasjids &&
-          masjids.map((masjid, index) => (
-            <Marker
-              key={index}
-              coordinate={{
-                latitude: masjid.latitude,
-                longitude: masjid.longitude,
-              }}
-              title={masjid.name}
-              description={`${masjid.address}, ${masjid.city}, ${masjid.state}`}
-            >
-              <View style={{ width: 45, height: 45 }}>
-                <Image
-                  source={masjidIcon}
-                  style={{ width: '100%', height: '100%' }}
-                />
-              </View>
-            </Marker>
-          ))}
-      </MapView>
+  {/* Render Masjid Markers */}
+  {showMasjids && masjids.length > 0 &&
+    masjids.map((masjid, index) => (
+      <Marker
+        key={index}
+        coordinate={{
+          latitude: masjid.latitude,
+          longitude: masjid.longitude,
+        }}
+        title={masjid.name}
+        description={`${masjid.address}, ${masjid.city}, ${masjid.state}`}
+      >
+        <View style={{ width: 45, height: 45 }}>
+          <Image
+            source={masjidIcon}
+            style={{ width: '100%', height: '100%' }}
+          />
+        </View>
+      </Marker>
+    ))}
+
+  {/* Render Restaurant Markers */}
+  {showRestaurants && restaurants.length > 0 &&
+    restaurants.map((restaurant, index) => (
+      <Marker
+        key={index}
+        coordinate={{
+          latitude: restaurant.latitude,
+          longitude: restaurant.longitude,
+        }}
+        title={restaurant.name}
+        description={`${restaurant.address}, ${restaurant.city}, ${restaurant.state}`}
+      >
+        <View style={{ width: 45, height: 45 }}>
+          <Image
+            source={restaurantIcon}
+            style={{ width: '100%', height: '100%' }}
+          />
+        </View>
+      </Marker>
+    ))}
+</MapView>
+
 
       {/* Header Section */}
       <View style={styles.header}>
@@ -148,6 +204,13 @@ export default function HomeScreen() {
           <Switch
             value={showMasjids}
             onValueChange={handleShowMasjidsToggle}
+          />
+        </View>
+        <View style={styles.toggleContainer}>
+          <Text style={styles.toggleText}>Show Restaurants</Text>
+          <Switch
+            value={showRestaurants}
+            onValueChange={handleShowRestaurantsToggle}
           />
         </View>
       </View>
@@ -171,7 +234,7 @@ const styles = StyleSheet.create({
     left: 10,
     right: 10,
     zIndex: 10,
-    flexDirection: 'row',
+    flexDirection: 'column',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 10,
@@ -182,6 +245,7 @@ const styles = StyleSheet.create({
   toggleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 10,
   },
   toggleText: {
     fontSize: 16,
