@@ -1,27 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Button, Image } from 'react-native';
+import { View, Text, StyleSheet, Button, Image, Alert } from 'react-native';
 import * as Location from 'expo-location';
-import MapView, { Marker, Circle } from 'react-native-maps'; // Ensure correct import for react-native-maps
+import MapView, { Marker, Circle } from 'react-native-maps';
 
-// Adjust the custom icon with appropriate size
 const masjidIcon = require('./../../assets/small-masjid-icon.png'); // Ensure the icon path is correct
-const halalRestaurantIcon = require('./../../assets/halal-restaurant-icon.png'); // Ensure the icon path is correct
 
 export default function HomeScreen() {
   const [region, setRegion] = useState<any>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [masjids, setMasjids] = useState<any[]>([]); // Example placeholder for masjids
-  const [restaurants, setRestaurants] = useState<any[]>([]); // Example placeholder for restaurants
-  const [radius, setRadius] = useState<number>(10); // Default radius for search
+  const [masjids, setMasjids] = useState<any[]>([]);
+  const [radius, setRadius] = useState<number>(10);
 
-  // Function to fetch masjids and restaurants
   const fetchLocations = async (latitude: number, longitude: number, radiusInMiles: number) => {
-    // Replace this with your API calls or mock data
-    setMasjids([{ name: 'Masjid Al-Noor', latitude: 42.3611, longitude: -71.0575 }]); // Example data
-    setRestaurants([{ name: 'Halal Restaurant A', latitude: 42.3621, longitude: -71.0585 }]); // Example data
+    try {
+      const response = await fetch(
+        `http://192.168.12.206:8080/api/fetchMasjids?latitude=${latitude}&longitude=${longitude}&radiusInMiles=${radiusInMiles}`
+      );
+  
+      if (!response.ok) {
+        throw new Error(`Error fetching masjids: ${response.statusText}`);
+      }
+  
+      const data = await response.json();
+      console.log('Fetched masjids:', data); 
+      setMasjids(data || []); // Assuming the response is an array of masjids
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'An unknown error occurred';
+      Alert.alert('Error', errorMessage);
+      console.error(errorMessage);
+    }
   };
+  
 
-  // Function to get the current location
   const getCurrentLocation = async () => {
     let { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
@@ -30,18 +41,24 @@ export default function HomeScreen() {
     }
 
     let location = await Location.getCurrentPositionAsync({});
+    const { latitude, longitude } = location.coords;
+
     setRegion({
-      latitude: location.coords.latitude,
-      longitude: location.coords.longitude,
+      latitude,
+      longitude,
       latitudeDelta: 0.0922,
       longitudeDelta: 0.0421,
     });
 
-    fetchLocations(location.coords.latitude, location.coords.longitude, radius);
+    fetchLocations(latitude, longitude, radius);
   };
 
   useEffect(() => {
-    getCurrentLocation();
+    if (region) {
+      fetchLocations(region.latitude, region.longitude, radius);
+    } else {
+      getCurrentLocation();
+    }
   }, [radius]);
 
   if (errorMsg) {
@@ -61,13 +78,13 @@ export default function HomeScreen() {
         showsMyLocationButton={true}
         zoomControlEnabled={true}
       >
-        {/* Marker for the user's current location */}
-        <Marker coordinate={region}>
-          <Text>You are here</Text>
-        </Marker>
-        <Circle center={region} radius={500} fillColor="blue" />
+        <Circle
+          center={region}
+          radius={radius * 1609.34} // Convert miles to meters
+          strokeColor="blue"
+          fillColor="rgba(0, 0, 255, 0.1)"
+        />
 
-        {/* Example of showing Masjids */}
         {masjids.map((masjid, index) => (
           <Marker
             key={index}
@@ -76,53 +93,22 @@ export default function HomeScreen() {
               longitude: masjid.longitude,
             }}
             title={masjid.name}
-            description="Masjid">
+            description={`${masjid.address}, ${masjid.city}, ${masjid.state}`}
+          >
             <View style={{ width: 45, height: 45 }}>
-    <Image
-      source={masjidIcon}
-      style={{ width: '100%', height: '100%' }}
-    />
-  </View>
-              
-              </Marker>
+              <Image
+                source={masjidIcon}
+                style={{ width: '100%', height: '100%' }}
+              />
+            </View>
+          </Marker>
         ))}
-
-        {/* Example of showing Halal Restaurants */}
-        {restaurants.map((restaurant, index) => (
-          <Marker
-            key={index}
-            coordinate={{
-              latitude: restaurant.latitude,
-              longitude: restaurant.longitude,
-            }}
-            title={restaurant.name}
-            description="Halal Restaurant">
-                 <View style={{ width: 45, height: 45 }}>
-    <Image
-      source={halalRestaurantIcon}
-      style={{ width: '100%', height: '100%' }}
-    />
-  </View>
-            </Marker>
-        ))}
-
-        {/* Circle to show the search radius */}
-        <Circle
-          center={region}
-          radius={radius * 1609.34} // Convert miles to meters
-          strokeColor="blue"
-          fillColor="rgba(0, 0, 255, 0.1)"
-        />
       </MapView>
 
-      {/* Header with Locate Me Button */}
       <View style={styles.header}>
         <Button title="Locate me" onPress={getCurrentLocation} />
       </View>
 
-      {/* Controls */}
-      <Button title="Increase Radiu" onPress={() => setRadius(radius + 5)} />
-      <Button title="Decrease Radius" onPress={() => setRadius(radius - 5)} />
     </View>
   );
 }
