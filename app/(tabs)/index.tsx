@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Button, Image, Alert } from 'react-native';
+import { View, Text, StyleSheet, Button, Image, Alert, Switch, ActivityIndicator } from 'react-native';
 import * as Location from 'expo-location';
 import MapView, { Marker, Circle } from 'react-native-maps';
 
@@ -10,63 +10,97 @@ export default function HomeScreen() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [masjids, setMasjids] = useState<any[]>([]);
   const [radius, setRadius] = useState<number>(10);
+  const [showMasjids, setShowMasjids] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const fetchLocations = async (latitude: number, longitude: number, radiusInMiles: number) => {
     try {
+      console.log(`Fetching masjids: lat=${latitude}, long=${longitude}, radius=${radiusInMiles}`);
       const response = await fetch(
         `http://192.168.12.206:8080/api/fetchMasjids?latitude=${latitude}&longitude=${longitude}&radiusInMiles=${radiusInMiles}`
       );
-  
+
       if (!response.ok) {
         throw new Error(`Error fetching masjids: ${response.statusText}`);
       }
-  
+
       const data = await response.json();
-      console.log('Fetched masjids:', data); 
-      setMasjids(data || []); // Assuming the response is an array of masjids
+      console.log('Fetched masjids:', data);
+      setMasjids(data || []);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'An unknown error occurred';
       Alert.alert('Error', errorMessage);
       console.error(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
   };
-  
 
   const getCurrentLocation = async () => {
-    let { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      setErrorMsg('Permission to access location was denied');
-      return;
+    try {
+      setIsLoading(true);
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setErrorMsg('Permission to access location was denied');
+        setIsLoading(false);
+        return;
+      }
+
+      let location = await Location.getCurrentPositionAsync({});
+      const { latitude, longitude } = location.coords;
+
+      const updatedRegion = {
+        latitude,
+        longitude,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+      };
+
+      console.log('Setting region:', updatedRegion);
+      setRegion(updatedRegion);
+      await fetchLocations(latitude, longitude, radius); // Fetch masjids after setting region
+    } catch (error) {
+      console.error('Error getting location:', error);
+      setErrorMsg('Failed to fetch location. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
-
-    let location = await Location.getCurrentPositionAsync({});
-    const { latitude, longitude } = location.coords;
-
-    setRegion({
-      latitude,
-      longitude,
-      latitudeDelta: 0.0922,
-      longitudeDelta: 0.0421,
-    });
-
-    fetchLocations(latitude, longitude, radius);
   };
 
   useEffect(() => {
+    console.log('Initial load: fetching location');
+    getCurrentLocation();
+  }, []);
+
+  useEffect(() => {
     if (region) {
+      console.log('Region updated, refetching masjids...');
       fetchLocations(region.latitude, region.longitude, radius);
-    } else {
-      getCurrentLocation();
     }
   }, [radius]);
 
-  if (errorMsg) {
-    return <Text>{errorMsg}</Text>;
+  const handleShowMasjidsToggle = () => {
+    setShowMasjids((prev) => !prev);
+
+    if (!showMasjids) {
+      // Re-center the map and fetch masjids when re-enabling
+      console.log('Re-enabling masjid markers');
+      getCurrentLocation();
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color="#0000ff" />
+        <Text>Loading...</Text>
+      </View>
+    );
   }
 
-  if (!region) {
-    return <Text>Loading...</Text>;
+  if (errorMsg) {
+    return <Text>{errorMsg}</Text>;
   }
 
   return (
@@ -85,30 +119,37 @@ export default function HomeScreen() {
           fillColor="rgba(0, 0, 255, 0.1)"
         />
 
-        {masjids.map((masjid, index) => (
-          <Marker
-            key={index}
-            coordinate={{
-              latitude: masjid.latitude,
-              longitude: masjid.longitude,
-            }}
-            title={masjid.name}
-            description={`${masjid.address}, ${masjid.city}, ${masjid.state}`}
-          >
-            <View style={{ width: 45, height: 45 }}>
-              <Image
-                source={masjidIcon}
-                style={{ width: '100%', height: '100%' }}
-              />
-            </View>
-          </Marker>
-        ))}
+        {showMasjids &&
+          masjids.map((masjid, index) => (
+            <Marker
+              key={index}
+              coordinate={{
+                latitude: masjid.latitude,
+                longitude: masjid.longitude,
+              }}
+              title={masjid.name}
+              description={`${masjid.address}, ${masjid.city}, ${masjid.state}`}
+            >
+              <View style={{ width: 45, height: 45 }}>
+                <Image
+                  source={masjidIcon}
+                  style={{ width: '100%', height: '100%' }}
+                />
+              </View>
+            </Marker>
+          ))}
       </MapView>
 
       <View style={styles.header}>
         <Button title="Locate me" onPress={getCurrentLocation} />
+        <View style={styles.checkboxContainer}>
+          <Text>Show Masjids</Text>
+          <Switch
+            value={showMasjids}
+            onValueChange={handleShowMasjidsToggle}
+          />
+        </View>
       </View>
-
     </View>
   );
 }
@@ -128,5 +169,18 @@ const styles = StyleSheet.create({
     top: 40,
     left: 10,
     zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  loader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
